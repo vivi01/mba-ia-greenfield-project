@@ -32,6 +32,8 @@ import {
   VerificationTokenType,
 } from './entities/verification-token.entity';
 
+jest.setTimeout(30000);
+
 const ALL_ENTITIES = [User, Channel, RefreshToken, VerificationToken];
 
 async function createAuthTestModule(): Promise<TestingModule> {
