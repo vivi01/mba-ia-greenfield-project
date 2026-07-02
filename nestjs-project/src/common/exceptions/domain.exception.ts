@@ -60,3 +60,21 @@ export class UnsupportedVideoFormatException extends DomainException {
     super('UNSUPPORTED_VIDEO_FORMAT', 415, 'Unsupported video format');
   }
 }
+
+export class VideoNotFoundException extends DomainException {
+  constructor() {
+    super('VIDEO_NOT_FOUND', 404, 'Video not found');
+  }
+}
+
+export class VideoNotOwnedException extends DomainException {
+  constructor() {
+    super('VIDEO_NOT_OWNED', 403, 'You do not own this video');
+  }
+}
+
+export class InvalidUploadStateException extends DomainException {
+  constructor() {
+    super('INVALID_UPLOAD_STATE', 409, 'Upload is not awaiting completion');
+  }
+}

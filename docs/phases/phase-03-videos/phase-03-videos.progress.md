@@ -1,7 +1,7 @@
 # Phase 03 — Upload e Processamento de Vídeos — Progress
 
 **Status:** in_progress
-**SIs:** 5/9 completed
+**SIs:** 6/9 completed
 
 ### SI-03.1 — Dependências, Configuração e Docker Compose (Storage + Fila + Worker)
 - **Status:** completed
@@ -56,9 +56,15 @@
   - E2E: o `beforeAll`/`afterAll` receberam timeout explícito de `60_000ms` — o cold-compile do `AppModule` via ts-jest sob o bind mount lento do Windows estourava o default de 5s do Jest (era timeout de hook, não falha de asserção).
 
 ### SI-03.6 — Conclusão de Upload e Enfileiramento de Processamento
-- **Status:** pending
-- **Tests:** —
-- **Observations:** —
+- **Status:** completed
+- **Tests:** 16 passing (9 unit + 2 integration + 5 E2E)
+- **Observations:**
+  - `POST /videos/:id/complete` (`@HttpCode(202)`, `@Param('id', ParseUUIDPipe)`) → `VideosService.completeUpload(userId, videoId, dto)`: carrega o vídeo (`VideoNotFoundException`), resolve o canal do chamador e compara (`VideoNotOwnedException`), exige `status='draft'` + `upload_id` presente (`InvalidUploadStateException`), chama `storage.completeMultipartUpload`, limpa `upload_id`, seta `status='processing'`, persiste e enfileira **um** job `process-video` com `{ videoId, storageKey }`.
+  - **BullMQ (primeira fila do projeto):** `BullModule.forRootAsync` registrado no `AppModule` (conexão Redis a partir de `queueConfig` — cobre API e o container worker, ambos bootam `AppModule`); `BullModule.registerQueue({ name: 'video-processing' })` no `VideosModule`; `@InjectQueue(VIDEO_PROCESSING_QUEUE)` no `VideosService`. Nomes de fila/job centralizados em `videos.constants.ts` (`VIDEO_PROCESSING_QUEUE`, `PROCESS_VIDEO_JOB`). APIs conferidas via context7 (`@nestjs/bullmq`) antes de implementar. Retry/backoff (`defaultJobOptions`) ficam para SI-03.8 conforme o plano.
+  - `CompleteUploadDto`: `parts` `@IsArray @ArrayNotEmpty @ValidateNested({each:true}) @Type(() => CompletedPartDto)`, cada item `{ @IsInt @Min(1) part_number, @IsString @IsNotEmpty etag }`. `ParseUUIDPipe` no path → id malformado vira 400 VALIDATION_ERROR (via `ValidationExceptionFilter`).
+  - Exceções `VideoNotFoundException` (404), `VideoNotOwnedException` (403), `InvalidUploadStateException` (409) adicionadas a `domain.exception.ts`.
+  - **Desvio do plano (Action 3 — `size_bytes`):** o plano pede "gravar `size_bytes`" na conclusão, mas nem a resposta do `CompleteMultipartUpload` nem o `StorageService` (SI-03.3) expõem o tamanho do objeto neste ponto, e estender o adaptador de storage está fora do escopo desta SI. Nenhum teste/AC de SI-03.6 exige `size_bytes`. **Adiado para SI-03.8**, onde o worker baixa o original e pode derivar `size_bytes` do arquivo junto com duração/metadados. Deixar isso explícito para a próxima SI.
+  - Testes: unit cobre os 4 ramos de `completeUpload` (mocks de repo/storage/channels/queue via `getQueueToken`); integration usa `Queue` real (Redis) + round-trip real de multipart (init → PUT presignado com `Uint8Array` → complete) e assere `status='processing'`/`upload_id=null` no banco + job publicado; E2E cobre os 5 cenários do spec. Hooks `beforeAll/afterAll` dos specs de integração/E2E receberam timeout de `60_000ms` (cold-compile do ts-jest sob o bind mount lento estoura o default de 5s). Filas são limpas com `queue.obliterate({force:true})` entre testes; o container `video-worker` ainda não tem `@Processor` (SI-03.8), então nenhum consumidor drena os jobs durante os testes.
 
 ### SI-03.7 — Utilitário de Integração FFmpeg (ffprobe + thumbnail)
 - **Status:** pending
