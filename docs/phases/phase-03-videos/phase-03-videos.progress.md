@@ -1,7 +1,7 @@
 # Phase 03 — Upload e Processamento de Vídeos — Progress
 
 **Status:** in_progress
-**SIs:** 4/9 completed
+**SIs:** 5/9 completed
 
 ### SI-03.1 — Dependências, Configuração e Docker Compose (Storage + Fila + Worker)
 - **Status:** completed
@@ -44,9 +44,16 @@
   - Incidental fix: SI-03.3's `storage.service.integration-spec.ts` passed `Buffer` to `fetch` (runtime-OK via undici, but `tsc` rejects `Buffer` as `BodyInit`). Switched to `Uint8Array`/`TextEncoder` so `tsc --noEmit` is clean (DoD).
 
 ### SI-03.5 — Início de Upload (Pré-cadastro de Rascunho + Init Multipart)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** —
+- **Status:** completed
+- **Tests:** 11 passing (5 unit + 1 integration + 5 E2E)
+- **Observations:**
+  - `POST /videos` (`VideosController`, `@ApiBearerAuth`, `@HttpCode(201)`) → `VideosService.initUpload(userId, dto)`: resolve o canal via `channelsService.findByOwner`, valida a allowlist de `content_type`, gera `public_id`, deriva `storage_key = videos/{id}/original.<ext>` (id pré-gerado com `randomUUID()` para compor a key antes do insert), persiste o rascunho (`status='draft'`), abre o multipart (`createMultipartUpload` + `presignUploadParts`, `partCount = ceil(size/part_size)`), grava `upload_id` e retorna `{ id, public_id, status, upload_id, storage_key, part_size, parts }`.
+  - **Desvio deliberado do plano (Action 1 vs AC #2 / test 1.2):** o plano lista `@Max(10737418240)` no DTO, mas isso rejeitaria o caso "1 byte acima de 10GB" como **400 VALIDATION_ERROR**, enquanto a AC #2 e o test spec `videos-upload-init.plan.md §1.2` exigem **413 FILE_TOO_LARGE**. Resolvi a favor da AC/test (autoritativos): o `@Max` foi **omitido** do DTO (mantidos `@IsInt`/`@IsPositive` para o 400 de corpo inválido) e o teto de 10GB é imposto no serviço via `FileTooLargeException` (413), lendo `storageConfig.uploadMaxBytes`. Vale revisar o texto da Action 1 do plano para refletir isso.
+  - `ChannelsService.findByOwner(userId): Promise<Channel>` adicionado (resolução de posse pertence ao domínio de canais); lança `Error` genérico se ausente — invariante (todo usuário tem exatamente um canal, criado no registro via `UsersService.createUserWithChannel`). `VideosModule` passou a importar `ChannelsModule` (exporta `ChannelsService`) e `StorageModule` (exporta `StorageService`); registrados `VideosController` + `VideosService`.
+  - Allowlist de MIME em `src/videos/videos.constants.ts` (`SUPPORTED_VIDEO_MIME_TYPES` como `readonly string[]` para o `.includes` type-checar); regenera `public_id` em colisão via helper local `isPgUniqueViolationOnColumn` (mesmo padrão do `ChannelsService`, `MAX_PUBLIC_ID_RETRIES=5`). `size_bytes` NÃO é persistido no init (Data Model: preenchido só na conclusão — SI-03.6).
+  - Novas exceções de domínio `FileTooLargeException` (413) e `UnsupportedVideoFormatException` (415) em `domain.exception.ts`, mapeadas pelo `DomainExceptionFilter` existente (shape genérico via `httpStatus`/`errorCode`).
+  - Testes de serviço construídos manualmente (mock repo/storage/channels no unit; `new VideosService(...)` + `storageConfig()` no integration, espelhando `channels.service.integration-spec.ts`). O integration e o E2E abrem multipart uploads reais no MinIO e os **abortam no `afterAll`** para não deixar uploads pendentes.
+  - E2E: o `beforeAll`/`afterAll` receberam timeout explícito de `60_000ms` — o cold-compile do `AppModule` via ts-jest sob o bind mount lento do Windows estourava o default de 5s do Jest (era timeout de hook, não falha de asserção).
 
 ### SI-03.6 — Conclusão de Upload e Enfileiramento de Processamento
 - **Status:** pending
