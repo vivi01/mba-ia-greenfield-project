@@ -1,7 +1,7 @@
 # Phase 03 — Upload e Processamento de Vídeos — Progress
 
 **Status:** in_progress
-**SIs:** 2/9 completed
+**SIs:** 3/9 completed
 
 ### SI-03.1 — Dependências, Configuração e Docker Compose (Storage + Fila + Worker)
 - **Status:** completed
@@ -26,9 +26,14 @@
   - Test isolation: deliberately did NOT add `videos` to the shared `cleanAllTables` — `migrations.integration-spec` drops `channels CASCADE` (dropping `videos`) and only re-runs the 2 baseline migrations, so a shared `DELETE FROM "videos"` would throw "relation does not exist" in other suites. The video entity test cleans `videos` locally (before `cleanAllTables`, respecting FK order).
 
 ### SI-03.3 — Adaptador de Object Storage (S3/MinIO)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** —
+- **Status:** completed
+- **Tests:** 4 passing (3 integration vs real MinIO + 1 module compile)
+- **Observations:**
+  - `StorageService` wraps `S3Client` (endpoint + `forcePathStyle` from `storageConfig`): `createMultipartUpload`, `presignUploadParts` (presigned PUT per part via `s3-request-presigner`), `completeMultipartUpload` (parts sorted by number → `{ETag,PartNumber}`), `abortMultipartUpload`, `getPresignedGetUrl({ expiresIn, contentDisposition? })` (`ResponseContentDisposition` for attachment downloads).
+  - `createMultipartUpload` throws (never swallows) if S3 returns no `UploadId`.
+  - `StorageModule` provides + exports `StorageService`; module test provides config via `ConfigModule.forRoot({ isGlobal:true, load:[storageConfig] })`.
+  - Integration test drives the full round-trip with `fetch` against the presigned URLs (single small last-part waives the 5MB minimum) and cleans up objects via a raw `S3Client` `DeleteObject` in `afterAll`.
+  - APIs cross-checked against AWS SDK v3 docs via context7 before implementing.
 
 ### SI-03.4 — Geração de URL Pública Única (nanoid)
 - **Status:** pending
