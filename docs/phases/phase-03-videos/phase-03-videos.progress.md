@@ -1,7 +1,7 @@
 # Phase 03 — Upload e Processamento de Vídeos — Progress
 
 **Status:** in_progress
-**SIs:** 3/9 completed
+**SIs:** 4/9 completed
 
 ### SI-03.1 — Dependências, Configuração e Docker Compose (Storage + Fila + Worker)
 - **Status:** completed
@@ -36,9 +36,12 @@
   - APIs cross-checked against AWS SDK v3 docs via context7 before implementing.
 
 ### SI-03.4 — Geração de URL Pública Única (nanoid)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** —
+- **Status:** completed
+- **Tests:** 4 passing (unit)
+- **Observations:**
+  - `generatePublicId()` uses nanoid's secure default RNG + URL-safe alphabet (`A-Za-z0-9_-`), fixed length `PUBLIC_ID_LENGTH = 21` (matches `videos.public_id` varchar(21)). Final uniqueness enforced by the DB unique constraint + regenerate-on-conflict (SI-03.5).
+  - nanoid pinned to v3 (CommonJS-compatible); import verified under the project's CommonJS build — `tsc --noEmit` clean and the unit test runs.
+  - Incidental fix: SI-03.3's `storage.service.integration-spec.ts` passed `Buffer` to `fetch` (runtime-OK via undici, but `tsc` rejects `Buffer` as `BodyInit`). Switched to `Uint8Array`/`TextEncoder` so `tsc --noEmit` is clean (DoD).
 
 ### SI-03.5 — Início de Upload (Pré-cadastro de Rascunho + Init Multipart)
 - **Status:** pending

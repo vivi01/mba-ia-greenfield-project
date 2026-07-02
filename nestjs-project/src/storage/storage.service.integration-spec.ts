@@ -49,7 +49,10 @@ describe('StorageService (integration, MinIO)', () => {
     );
     const [part] = await service.presignUploadParts(key, uploadId, 1);
 
-    const putResponse = await fetch(part.url, { method: 'PUT', body });
+    const putResponse = await fetch(part.url, {
+      method: 'PUT',
+      body: new Uint8Array(body),
+    });
     expect(putResponse.ok).toBe(true);
     const etag = putResponse.headers.get('etag');
     expect(etag).toBeTruthy();
@@ -94,7 +97,10 @@ describe('StorageService (integration, MinIO)', () => {
       'application/octet-stream',
     );
     const [part] = await service.presignUploadParts(key, uploadId, 1);
-    await fetch(part.url, { method: 'PUT', body: Buffer.from('partial data') });
+    await fetch(part.url, {
+      method: 'PUT',
+      body: new TextEncoder().encode('partial data'),
+    });
 
     await service.abortMultipartUpload(key, uploadId);
 
