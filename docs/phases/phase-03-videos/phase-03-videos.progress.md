@@ -1,7 +1,7 @@
 # Phase 03 — Upload e Processamento de Vídeos — Progress
 
 **Status:** in_progress
-**SIs:** 7/9 completed
+**SIs:** 8/9 completed
 
 ### SI-03.1 — Dependências, Configuração e Docker Compose (Storage + Fila + Worker)
 - **Status:** completed
@@ -77,9 +77,18 @@
   - SI unit-only legado (sem `**Test Specs:**`) → nenhum E2E autorado. `tsc --noEmit` exit 0.
 
 ### SI-03.8 — Worker de Processamento de Vídeo
-- **Status:** pending
-- **Tests:** —
-- **Observations:** —
+- **Status:** completed
+- **Tests:** 7 passing (5 unit + 1 integration + 1 module compile) — o `ffmpeg.util.spec.ts` (7, da SI-03.7) continua verde
+- **Observations:**
+  - `src/videos/processing/video.processor.ts` — `@Processor('video-processing')` `VideoProcessingWorker extends WorkerHost`; `process(job)`: `mkdtemp` → `storage.downloadToFile` → `probeMetadata` → `extractThumbnail` → `readFile` + `storage.putObject(thumbnailKey(id), buf, 'image/jpeg')` → carrega o vídeo e persiste `status='ready'` + `duration_seconds`/`metadata`/`thumbnail_key`/`size_bytes`; `finally` remove o `workDir`. Erros de FFmpeg/storage **propagam** (retry do BullMQ).
+  - **`@OnWorkerEvent('failed')` `onFailed(job, error)`**: só transiciona para `status='error'` + `error_reason` quando `job.attemptsMade >= (job.opts.attempts ?? PROCESS_VIDEO_MAX_ATTEMPTS)` — falhas transitórias ficam fora do enum de status (per `TD-01`/`TD-05`). Nunca relança (handler de evento; per `.claude/rules/nestjs-services.md`), erro de update é logado.
+  - **StorageService estendido** (necessário pelo worker, referenciado pela Action 1): `downloadToFile(key, destPath)` faz streaming do `GetObject` para arquivo via `stream/promises.pipeline` e **retorna `ContentLength`** — é daqui que sai o **`size_bytes`** (resolve o carry-over adiado na SI-03.6); `putObject(key, body, contentType)` sobe a thumbnail. Aditivo, sem quebrar os testes existentes do storage.
+  - **Retry/backoff (carry-over da SI-03.6):** `BullModule.registerQueue` no `VideosModule` ganhou `defaultJobOptions: { attempts: 3, backoff: { type: 'exponential', delay: 1000 } }` (constantes `PROCESS_VIDEO_MAX_ATTEMPTS`/`PROCESS_VIDEO_BACKOFF_MS`). Confirmado via context7 (`@nestjs/bullmq` + `bullmq`).
+  - **Nota de arquitetura:** API e worker bootam o mesmo `AppModule`, então o `@Processor` registrado nos providers do `VideosModule` roda em **ambos** os containers (consumidores concorrentes do BullMQ — jobs processados uma vez; ambos têm ffmpeg na imagem compartilhada). Segue o plano (Action 3 pede registro simples no `VideosModule`); a isolação por container é nominal. `.compile()` não dispara o `BullExplorer` (onApplicationBootstrap), então o teste de módulo não inicia worker real.
+  - **jsonb via load-mutate-save:** o `process` carrega o vídeo e atribui `metadata` direto (em vez de `repository.update`) — o `QueryDeepPartialEntity` do TypeORM não aceita `Record<string, unknown>` num campo jsonb no `.update()`. `onFailed` (sem jsonb) continua usando `update`.
+  - **Correção do `videos.module.spec.ts`:** o teste de compilação não provia `storageConfig`/`queueConfig` nem conexão Bull (gap pré-existente desde a SI-03.5, quando `StorageModule`/`VideosService` entraram — a instância eager do `StorageService` exige `CONFIGURATION(storage)`). Adicionados `ConfigModule.forRoot({ load: [storageConfig, queueConfig] })` + `BullModule.forRoot({ connection })`; passa a compilar todo o grafo (serviço + processor + fila).
+  - Teste de integração gera um clipe real de 1s via `ffmpeg -f lavfi -i testsrc` (o binário está na imagem compartilhada, presente também no `nestjs-api`), sobe o original no MinIO, roda `worker.process` e assere `ready`/`duration_seconds≥1`/`size_bytes>0`/`thumbnail_key` + thumbnail baixável. Hooks `beforeAll/afterAll` com timeout `60_000`; objetos limpos via `S3Client` cru no `afterAll`.
+  - Ruído `ECONNREFUSED 127.0.0.1:6379` pós-teste vem de conexões Bull residuais em specs sem `forRoot`; não afeta asserções (jobs não são drenados — sem `@Processor` ativo nos testes de serviço).
 
 ### SI-03.9 — Entrega de Vídeo (metadados, streaming e download)
 - **Status:** pending

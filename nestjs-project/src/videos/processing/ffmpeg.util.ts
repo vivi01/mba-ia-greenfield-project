@@ -4,19 +4,15 @@ import { spawn } from 'node:child_process';
 const FFPROBE_BIN = 'ffprobe';
 const FFMPEG_BIN = 'ffmpeg';
 
-/** Parsed subset of `ffprobe` JSON output persisted as the video's metadata. */
-export interface ProbeMetadata {
-  /** Container-level info (`-show_format`). */
-  format: Record<string, unknown>;
-  /** Per-stream info (`-show_streams`). */
-  streams: Record<string, unknown>[];
-}
-
 /** Result of probing a media file for duration and raw metadata. */
 export interface ProbeResult {
   /** Duration in whole seconds, matching the `videos.duration_seconds` int column. */
   durationSeconds: number;
-  metadata: ProbeMetadata;
+  /**
+   * Subset of the `ffprobe` JSON (`{ format, streams }`) persisted as-is in the
+   * `videos.metadata` jsonb column — hence typed to match that column.
+   */
+  metadata: Record<string, unknown>;
 }
 
 /** Shape of the JSON emitted by `ffprobe -print_format json`. */

@@ -1,8 +1,12 @@
+import { createWriteStream } from 'node:fs';
+import type { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import {
   AbortMultipartUploadCommand,
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
   GetObjectCommand,
+  PutObjectCommand,
   S3Client,
   UploadPartCommand,
 } from '@aws-sdk/client-s3';
@@ -123,6 +127,40 @@ export class StorageService {
         Bucket: this.bucket,
         Key: key,
         UploadId: uploadId,
+      }),
+    );
+  }
+
+  /**
+   * Streams an object to a local file (used by the worker to fetch the original
+   * before processing). Returns the object size in bytes. Throws if the object
+   * has no body.
+   */
+  async downloadToFile(key: string, destPath: string): Promise<number> {
+    const output = await this.client.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
+
+    if (!output.Body) {
+      throw new Error(`S3 returned no body for object "${key}"`);
+    }
+
+    await pipeline(output.Body as Readable, createWriteStream(destPath));
+    return Number(output.ContentLength ?? 0);
+  }
+
+  /** Uploads a small in-memory object (e.g. a generated thumbnail). */
+  async putObject(
+    key: string,
+    body: Buffer,
+    contentType: string,
+  ): Promise<void> {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
       }),
     );
   }
