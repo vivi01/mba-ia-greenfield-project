@@ -11,7 +11,7 @@ scope_description: "Backend video pipeline: object storage access, background pr
 _Subprojects in scope:_
 
 - `nestjs-project/` — backend that delivers the entire phase: the video module (entity, draft pre-registration, upload handshake, status lifecycle), the object-storage integration, the processing queue and its worker (FFmpeg metadata + thumbnail), unique-URL generation, and streaming/download delivery. Also owns the new `compose.yaml` services (object storage, queue broker, worker container).
-- `next-frontend/` — **Frontend deferred, no open decision in this document.** Phase 03 is a backend-only challenge (per `docs/fase3_doc/01-objective-and-scope.md`). The upload protocol (TD-03) and delivery contract (TD-09) define contracts a future frontend phase (Fases 04–05) will consume, but no frontend code is built here.
+- `next-frontend/` — **Frontend deferred, no open decision in this document.** Phase 03 is a backend-only challenge (per `docs/briefing-fase-03/01-objective-and-scope.md`). The upload protocol (TD-03) and delivery contract (TD-09) define contracts a future frontend phase (Fases 04–05) will consume, but no frontend code is built here.
 
 > **Version note:** BullMQ, the AWS S3 SDK family, an FFmpeg wrapper (if chosen), and the unique-URL library are **not yet installed** in `nestjs-project/package.json` — they are new dependencies introduced by this phase. Candidate versions are cited per TD from current documentation (via context7); the exact pins are locked later in `library-refs.md` during `plan-resolve`, validated against what actually installs on NestJS 11 / Node 22.
 
@@ -54,7 +54,7 @@ _Subprojects in scope:_
 
 **Capability:** Serviço de armazenamento de arquivos (vídeos e thumbnails)
 
-**Context:** Storage is *given* as S3-compatible (MinIO locally, S3 in prod — per `docs/fase3_doc/02-technical-decisions-to-make.md`). The open decision is **how the backend talks to it**: which client library, how to point it at the MinIO container (custom endpoint, path-style addressing), and how buckets/keys are organized for originals vs thumbnails. This client is used by the API (to issue upload credentials, TD-03) and by the worker (to read the original and write the thumbnail, TD-06).
+**Context:** Storage is *given* as S3-compatible (MinIO locally, S3 in prod — per `docs/briefing-fase-03/02-technical-decisions-to-make.md`). The open decision is **how the backend talks to it**: which client library, how to point it at the MinIO container (custom endpoint, path-style addressing), and how buckets/keys are organized for originals vs thumbnails. This client is used by the API (to issue upload credentials, TD-03) and by the worker (to read the original and write the thumbnail, TD-06).
 
 **Options:**
 
@@ -85,7 +85,7 @@ _Subprojects in scope:_
 
 **Capability:** Upload de vídeos com suporte a arquivos de até 10GB sem impacto na performance
 
-**Context:** The file (up to 10GB) must reach storage **without streaming through the API** — routing 10GB through the Nest process in a blocking way is an automatic failure (`docs/fase3_doc/06-automatic-failure.md`). Hard S3 constraint: a **single PUT is capped at 5GB**; objects larger than 5GB (up to 5TB) **require multipart upload**. So any single-request strategy is disqualified by the 10GB target on its own. This TD chooses the client↔storage transfer mechanism; TD-04 defines the surrounding handshake. (This is effectively a client↔storage contract a future frontend will consume; frontend is out of scope for this phase.)
+**Context:** The file (up to 10GB) must reach storage **without streaming through the API** — routing 10GB through the Nest process in a blocking way is an automatic failure (`docs/briefing-fase-03/06-automatic-failure.md`). Hard S3 constraint: a **single PUT is capped at 5GB**; objects larger than 5GB (up to 5TB) **require multipart upload**. So any single-request strategy is disqualified by the 10GB target on its own. This TD chooses the client↔storage transfer mechanism; TD-04 defines the surrounding handshake. (This is effectively a client↔storage contract a future frontend will consume; frontend is out of scope for this phase.)
 
 **Options:**
 
