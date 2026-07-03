@@ -32,7 +32,9 @@ describe('ffmpeg.util', () => {
       const promise = probeMetadata('/tmp/video.mp4');
       child.stdout.emit(
         'data',
-        Buffer.from(JSON.stringify({ format: { duration: '10' }, streams: [] })),
+        Buffer.from(
+          JSON.stringify({ format: { duration: '10' }, streams: [] }),
+        ),
       );
       child.emit('close', 0);
       await promise;

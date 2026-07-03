@@ -41,9 +41,11 @@ function generateTestVideo(outPath: string): Promise<void> {
     });
     child.on('error', reject);
     child.on('close', (code) => {
-      code === 0
-        ? resolve()
-        : reject(new Error(`ffmpeg fixture generation failed: ${stderr}`));
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`ffmpeg fixture generation failed: ${stderr}`));
+      }
     });
   });
 }

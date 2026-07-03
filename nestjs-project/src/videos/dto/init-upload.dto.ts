@@ -1,4 +1,10 @@
-import { IsInt, IsNotEmpty, IsOptional, IsPositive, IsString } from 'class-validator';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsPositive,
+  IsString,
+} from 'class-validator';
 
 export class InitUploadDto {
   /** Original filename; its extension derives the storage key and default title. */

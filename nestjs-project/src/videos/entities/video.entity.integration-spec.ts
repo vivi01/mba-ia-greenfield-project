@@ -55,7 +55,10 @@ describe('Video entity (integration)', () => {
     );
   }
 
-  function buildVideo(channelId: string, overrides: Partial<Video> = {}): Video {
+  function buildVideo(
+    channelId: string,
+    overrides: Partial<Video> = {},
+  ): Video {
     return videoRepository.create({
       public_id: `pub_${++counter}`,
       channel_id: channelId,

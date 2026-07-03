@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import type { Job } from 'bullmq';
 import type { Repository } from 'typeorm';
 import type { StorageService } from '../../storage/storage.service';

@@ -27,9 +27,7 @@ describe('StorageService (integration, MinIO)', () => {
     await Promise.all(
       createdKeys.map((key) =>
         rawClient
-          .send(
-            new DeleteObjectCommand({ Bucket: config.bucket, Key: key }),
-          )
+          .send(new DeleteObjectCommand({ Bucket: config.bucket, Key: key }))
           .catch(() => undefined),
       ),
     );

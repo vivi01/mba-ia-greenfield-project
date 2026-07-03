@@ -32,4 +32,27 @@ export default tseslint.config(
       "prettier/prettier": ["error", { endOfLine: "auto" }],
     },
   },
+  {
+    // Tests assert against `any`-typed values (supertest `res.body`, mock
+    // return values, raw query rows). The type-checked "unsafe" rules add noise
+    // without catching real bugs there, so relax them for specs and test
+    // helpers — production code keeps the strict defaults.
+    files: [
+      '**/*.spec.ts',
+      '**/*.integration-spec.ts',
+      '**/*.e2e-spec.ts',
+      'src/test/**/*.ts',
+    ],
+    rules: {
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+      // jest mock references (`mock.method`) and async mock signatures with no
+      // await are idiomatic in specs, not real defects.
+      '@typescript-eslint/unbound-method': 'off',
+      '@typescript-eslint/require-await': 'off',
+      '@typescript-eslint/no-unsafe-function-type': 'off',
+    },
+  },
 );
