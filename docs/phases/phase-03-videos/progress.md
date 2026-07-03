@@ -1,7 +1,7 @@
 # Phase 03 — Upload e Processamento de Vídeos — Progress
 
-**Status:** in_progress
-**SIs:** 8/9 completed
+**Status:** completed
+**SIs:** 9/9 completed
 
 ### SI-03.1 — Dependências, Configuração e Docker Compose (Storage + Fila + Worker)
 - **Status:** completed
@@ -91,6 +91,16 @@
   - Ruído `ECONNREFUSED 127.0.0.1:6379` pós-teste vem de conexões Bull residuais em specs sem `forRoot`; não afeta asserções (jobs não são drenados — sem `@Processor` ativo nos testes de serviço).
 
 ### SI-03.9 — Entrega de Vídeo (metadados, streaming e download)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** —
+- **Status:** completed
+- **Tests:** 26 (16 unit incl. 7 novos + 5 integration incl. 3 novos + 5 E2E novos em `test/videos-delivery.e2e-spec.ts`)
+- **Observations:**
+  - `VideosService.getPublicView(publicId)` → busca por `public_id` (`VideoNotFoundException`), retorna `{ public_id, title, status, duration_seconds, thumbnail_url, created_at }`; `thumbnail_url` é uma URL GET presignada de curta duração para `thumbnail_key` (ou `null` até processar). `getDeliveryUrl(publicId, { disposition? })` → 404 se ausente, `VideoNotReadyException` (409) se `status !== 'ready'`, senão URL GET presignada para `storage_key` (com `ResponseContentDisposition=attachment` no download). TTL em `DELIVERY_URL_TTL_SECONDS=3600`.
+  - `VideosController`: três rotas `@Public()` — `@Get(':publicId')` (200, view), `@Get(':publicId/stream')` e `@Get(':publicId/download')` com `@Redirect()` retornando `{ url, statusCode: 302 }` (padrão dinâmico confirmado via context7; mantém a API fora do caminho dos bytes, storage serve Range/206). Rotas de path distinto não colidem com `:publicId`.
+  - `VideoNotReadyException` (409, "Video is not ready for delivery") adicionada a `domain.exception.ts`.
+  - E2E autorado a partir de `specs/videos-delivery.plan.md` (cenários 1.1–1.5): semeia vídeo `ready` + não-`ready` direto no repo, requisições anônimas, `redirects(0)` para assertir 302 + `Location`.
+  - **Fechamento de fase (correções descobertas na verificação full-suite):**
+    - **Regressão pré-existente da SI-03.1:** `env.validation.integration-spec.ts` chamava `validate({})` esperando sucesso, mas a SI-03.1 tornou `STORAGE_*`/`REDIS_HOST` obrigatórios no Joi — falhava desde então (só surgiu agora na primeira full-suite). Corrigido adicionando as vars ao `requiredEnv` base.
+    - **Hang do jest (open handles do BullMQ):** o worker (SI-03.8) + a fila mantêm conexões `ioredis` abertas → jest "did not exit" e travava por horas. Adicionado `--forceExit` aos scripts `test`/`test:integration`/`test:cov`/`test:e2e`.
+    - **Isolamento do worker (TD-06):** o `@Processor` era registrado incondicionalmente no `VideosModule`, rodando também na API e em todo `AppModule` de E2E (drenava filas nos testes, gerava erros de teardown). Passou a ser gated por `process.env.VIDEO_WORKER === 'true'`, setado só nos scripts `start:worker*`. API e testes enfileiram mas não consomem. Revisão da nota de arquitetura da SI-03.8 (que era "roda em ambos os containers").
+    - **Lint (dívida pré-existente das fases 01–02):** `npm run lint` falhava com 202 erros — o `recommendedTypeChecked` aplicado a specs (`res.body` é `any`) mais um `as any` em `channels.service.ts`. Adicionado override de test-files no `eslint.config.mjs` (desliga `no-unsafe-*`, `unbound-method`, `require-await`, `no-unsafe-function-type` em specs/helpers); corrigido `channels.service.ts` (cast tipado) e 4 erros de higiene (imports/var não usados, ternário-como-statement). Código de produção fica estrito; lint zera. Reformatação prettier de arquivos da fase 03 (nunca linta dos antes) incluída.
+  - **Phase-end gates:** full unit+integration + full E2E verdes, `tsc --noEmit` limpo, `npm run build` ok, `npm run lint` zero erros.

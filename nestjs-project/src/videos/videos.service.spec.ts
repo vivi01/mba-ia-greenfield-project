@@ -8,6 +8,7 @@ import {
   UnsupportedVideoFormatException,
   VideoNotFoundException,
   VideoNotOwnedException,
+  VideoNotReadyException,
 } from '../common/exceptions/domain.exception';
 import storageConfig from '../config/storage.config';
 import { StorageService } from '../storage/storage.service';
@@ -29,10 +30,14 @@ describe('VideosService (unit)', () => {
     createMultipartUpload: jest.Mock;
     presignUploadParts: jest.Mock;
     completeMultipartUpload: jest.Mock;
+    getPresignedGetUrl: jest.Mock;
   };
   let queue: { add: jest.Mock };
 
-  const config = { uploadMaxBytes: 10_737_418_240, uploadPartSize: 104_857_600 };
+  const config = {
+    uploadMaxBytes: 10_737_418_240,
+    uploadPartSize: 104_857_600,
+  };
 
   beforeEach(async () => {
     videoRepository = {
@@ -45,6 +50,7 @@ describe('VideosService (unit)', () => {
       createMultipartUpload: jest.fn(),
       presignUploadParts: jest.fn(),
       completeMultipartUpload: jest.fn(),
+      getPresignedGetUrl: jest.fn(),
     };
     queue = { add: jest.fn() };
 
@@ -101,7 +107,9 @@ describe('VideosService (unit)', () => {
       expect(result.public_id).toBe(draft.public_id);
 
       expect(videoRepository.save).toHaveBeenCalledTimes(2);
-      expect(videoRepository.save.mock.calls[1][0].upload_id).toBe('upload-123');
+      expect(videoRepository.save.mock.calls[1][0].upload_id).toBe(
+        'upload-123',
+      );
     });
 
     it('defaults the title to filename when omitted and uses title when provided', async () => {
@@ -239,6 +247,122 @@ describe('VideosService (unit)', () => {
 
       expect(storage.completeMultipartUpload).not.toHaveBeenCalled();
       expect(queue.add).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getPublicView', () => {
+    function readyVideo(overrides: Partial<Video> = {}): Video {
+      return {
+        id: 'video-1',
+        public_id: 'pub_video_1',
+        title: 'My Clip',
+        status: 'ready',
+        storage_key: 'videos/video-1/original.mp4',
+        thumbnail_key: 'videos/video-1/thumbnail.jpg',
+        duration_seconds: 42,
+        created_at: new Date('2026-07-02T00:00:00Z'),
+        ...overrides,
+      } as Video;
+    }
+
+    it('returns the metadata view with a presigned thumbnail URL', async () => {
+      videoRepository.findOneBy.mockResolvedValue(readyVideo());
+      storage.getPresignedGetUrl.mockResolvedValue('http://minio/thumb-signed');
+
+      const view = await service.getPublicView('pub_video_1');
+
+      expect(videoRepository.findOneBy).toHaveBeenCalledWith({
+        public_id: 'pub_video_1',
+      });
+      expect(storage.getPresignedGetUrl).toHaveBeenCalledWith(
+        'videos/video-1/thumbnail.jpg',
+        expect.objectContaining({ expiresIn: expect.any(Number) }),
+      );
+      expect(view).toEqual({
+        public_id: 'pub_video_1',
+        title: 'My Clip',
+        status: 'ready',
+        duration_seconds: 42,
+        thumbnail_url: 'http://minio/thumb-signed',
+        created_at: new Date('2026-07-02T00:00:00Z'),
+      });
+    });
+
+    it('returns thumbnail_url null when the thumbnail is not yet generated', async () => {
+      videoRepository.findOneBy.mockResolvedValue(
+        readyVideo({ status: 'processing', thumbnail_key: null }),
+      );
+
+      const view = await service.getPublicView('pub_video_1');
+
+      expect(view.thumbnail_url).toBeNull();
+      expect(storage.getPresignedGetUrl).not.toHaveBeenCalled();
+    });
+
+    it('throws VideoNotFoundException for an unknown public_id', async () => {
+      videoRepository.findOneBy.mockResolvedValue(null);
+
+      await expect(service.getPublicView('nope')).rejects.toBeInstanceOf(
+        VideoNotFoundException,
+      );
+    });
+  });
+
+  describe('getDeliveryUrl', () => {
+    function readyVideo(overrides: Partial<Video> = {}): Video {
+      return {
+        id: 'video-1',
+        public_id: 'pub_video_1',
+        status: 'ready',
+        storage_key: 'videos/video-1/original.mp4',
+        ...overrides,
+      } as Video;
+    }
+
+    it('returns a presigned GET URL for a ready video (streaming, no disposition)', async () => {
+      videoRepository.findOneBy.mockResolvedValue(readyVideo());
+      storage.getPresignedGetUrl.mockResolvedValue(
+        'http://minio/stream-signed',
+      );
+
+      const url = await service.getDeliveryUrl('pub_video_1');
+
+      expect(url).toBe('http://minio/stream-signed');
+      const [key, options] = storage.getPresignedGetUrl.mock.calls[0];
+      expect(key).toBe('videos/video-1/original.mp4');
+      expect(options.contentDisposition).toBeUndefined();
+    });
+
+    it('passes attachment contentDisposition for downloads', async () => {
+      videoRepository.findOneBy.mockResolvedValue(readyVideo());
+      storage.getPresignedGetUrl.mockResolvedValue('http://minio/dl-signed');
+
+      await service.getDeliveryUrl('pub_video_1', {
+        disposition: 'attachment',
+      });
+
+      const options = storage.getPresignedGetUrl.mock.calls[0][1];
+      expect(options.contentDisposition).toBe('attachment');
+    });
+
+    it('throws VideoNotFoundException for an unknown public_id', async () => {
+      videoRepository.findOneBy.mockResolvedValue(null);
+
+      await expect(service.getDeliveryUrl('nope')).rejects.toBeInstanceOf(
+        VideoNotFoundException,
+      );
+      expect(storage.getPresignedGetUrl).not.toHaveBeenCalled();
+    });
+
+    it('throws VideoNotReadyException when the video is not ready', async () => {
+      videoRepository.findOneBy.mockResolvedValue(
+        readyVideo({ status: 'processing' }),
+      );
+
+      await expect(
+        service.getDeliveryUrl('pub_video_1'),
+      ).rejects.toBeInstanceOf(VideoNotReadyException);
+      expect(storage.getPresignedGetUrl).not.toHaveBeenCalled();
     });
   });
 });

@@ -88,6 +88,37 @@ describe('VideosService (integration)', () => {
     );
   }
 
+  /** Seeds a `ready` video with its original (and optional thumbnail) in MinIO. */
+  async function seedReadyVideo(
+    channel: Channel,
+    originalBody: Buffer,
+    withThumbnail = true,
+  ): Promise<Video> {
+    const saved = await videoRepository.save(
+      videoRepository.create({
+        public_id: `deliv_${++counter}`.padEnd(21, '0').slice(0, 21),
+        channel_id: channel.id,
+        title: 'Delivered Clip',
+        original_filename: 'clip.mp4',
+        status: 'ready',
+        storage_key: `videos/deliv-${counter}/original.mp4`,
+        thumbnail_key: withThumbnail
+          ? `videos/deliv-${counter}/thumbnail.jpg`
+          : null,
+        duration_seconds: 12,
+      }),
+    );
+    await storage.putObject(saved.storage_key, originalBody, 'video/mp4');
+    if (saved.thumbnail_key) {
+      await storage.putObject(
+        saved.thumbnail_key,
+        Buffer.from('fake-thumbnail'),
+        'image/jpeg',
+      );
+    }
+    return saved;
+  }
+
   describe('initUpload', () => {
     it('persists a draft with status draft, storage_key and upload_id', async () => {
       const channel = await seedChannel();
@@ -102,7 +133,9 @@ describe('VideosService (integration)', () => {
         uploadId: result.upload_id,
       });
 
-      const persisted = await videoRepository.findOneByOrFail({ id: result.id });
+      const persisted = await videoRepository.findOneByOrFail({
+        id: result.id,
+      });
       expect(persisted.status).toBe('draft');
       expect(persisted.channel_id).toBe(channel.id);
       expect(persisted.storage_key).toBe(result.storage_key);
@@ -151,6 +184,54 @@ describe('VideosService (integration)', () => {
         videoId: init.id,
         storageKey: init.storage_key,
       });
+    });
+  });
+
+  describe('getPublicView', () => {
+    it('returns metadata by public_id with a working presigned thumbnail URL', async () => {
+      const channel = await seedChannel();
+      const video = await seedReadyVideo(
+        channel,
+        Buffer.from('original-bytes'),
+      );
+
+      const view = await service.getPublicView(video.public_id);
+
+      expect(view).toMatchObject({
+        public_id: video.public_id,
+        title: 'Delivered Clip',
+        status: 'ready',
+        duration_seconds: 12,
+      });
+      expect(typeof view.thumbnail_url).toBe('string');
+
+      const thumbResponse = await fetch(view.thumbnail_url!);
+      expect(thumbResponse.status).toBe(200);
+    });
+  });
+
+  describe('getDeliveryUrl', () => {
+    it('produces a presigned URL that downloads the original object', async () => {
+      const channel = await seedChannel();
+      const body = 'streamtube-delivery-body';
+      const video = await seedReadyVideo(channel, Buffer.from(body), false);
+
+      const url = await service.getDeliveryUrl(video.public_id);
+      const response = await fetch(url);
+
+      expect(response.status).toBe(200);
+      expect(await response.text()).toBe(body);
+    });
+
+    it('carries an attachment Content-Disposition when requested', async () => {
+      const channel = await seedChannel();
+      const video = await seedReadyVideo(channel, Buffer.from('x'), false);
+
+      const url = await service.getDeliveryUrl(video.public_id, {
+        disposition: 'attachment',
+      });
+
+      expect(url).toContain('response-content-disposition=attachment');
     });
   });
 });

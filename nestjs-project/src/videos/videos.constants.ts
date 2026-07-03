@@ -27,3 +27,9 @@ export const PROCESS_VIDEO_BACKOFF_MS = 1000;
 export function thumbnailKey(videoId: string): string {
   return `videos/${videoId}/thumbnail.jpg`;
 }
+
+/** TTL (seconds) of the short-lived presigned GET URLs used for delivery (per `phase-03-videos/TD-09`). */
+export const DELIVERY_URL_TTL_SECONDS = 3600;
+
+/** `Content-Disposition` value forcing a download on the delivery URL. */
+export const ATTACHMENT_DISPOSITION = 'attachment';
