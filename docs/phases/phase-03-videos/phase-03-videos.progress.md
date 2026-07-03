@@ -1,7 +1,7 @@
 # Phase 03 — Upload e Processamento de Vídeos — Progress
 
 **Status:** in_progress
-**SIs:** 6/9 completed
+**SIs:** 7/9 completed
 
 ### SI-03.1 — Dependências, Configuração e Docker Compose (Storage + Fila + Worker)
 - **Status:** completed
@@ -67,9 +67,14 @@
   - Testes: unit cobre os 4 ramos de `completeUpload` (mocks de repo/storage/channels/queue via `getQueueToken`); integration usa `Queue` real (Redis) + round-trip real de multipart (init → PUT presignado com `Uint8Array` → complete) e assere `status='processing'`/`upload_id=null` no banco + job publicado; E2E cobre os 5 cenários do spec. Hooks `beforeAll/afterAll` dos specs de integração/E2E receberam timeout de `60_000ms` (cold-compile do ts-jest sob o bind mount lento estoura o default de 5s). Filas são limpas com `queue.obliterate({force:true})` entre testes; o container `video-worker` ainda não tem `@Processor` (SI-03.8), então nenhum consumidor drena os jobs durante os testes.
 
 ### SI-03.7 — Utilitário de Integração FFmpeg (ffprobe + thumbnail)
-- **Status:** pending
-- **Tests:** —
-- **Observations:** —
+- **Status:** completed
+- **Tests:** 7 passing (unit)
+- **Observations:**
+  - `src/videos/processing/ffmpeg.util.ts` — wrapper fino que faz `spawn` direto dos binários (per `TD-07`, sem `fluent-ffmpeg`). Helper interno `runBinary(command, args)` bufferiza stdout/stderr e resolve com stdout em exit 0; **rejeita** (nunca resolve silenciosamente — per `.claude/rules/nestjs-services.md`) em exit não-zero (mensagem `<bin> exited with code N: <stderr>`) e no evento `error` do processo (binário ausente → `Failed to spawn <bin>: ...`).
+  - `probeMetadata(filePath)` → `ffprobe -v error -print_format json -show_streams -show_format <file>`, `JSON.parse` da saída; `durationSeconds = Math.round(parseFloat(format.duration)) || 0` (int, casa com a coluna `duration_seconds`; default 0 quando ausente/NaN); `metadata = { format, streams }` (subconjunto cru do probe per Data Model). Tipos `ProbeResult`/`ProbeMetadata` exportados.
+  - `extractThumbnail(filePath, outPath)` → `ffmpeg -y -i <file> -frames:v 1 -q:v 2 <out>` (frame único, JPEG de alta qualidade); resolve `void` em exit 0.
+  - `child_process` é módulo core do Node → sem lookup context7 (mandato aplica-se a libs). Teste unit mocka `node:child_process` (`jest.mock` + `spawn` fake baseado em `EventEmitter` com `stdout`/`stderr`): assere as listas de argumentos de ambos os binários, o parse do JSON em `durationSeconds`+`metadata`, o default de duração, e a propagação de erro em exit não-zero e em falha de spawn.
+  - SI unit-only legado (sem `**Test Specs:**`) → nenhum E2E autorado. `tsc --noEmit` exit 0.
 
 ### SI-03.8 — Worker de Processamento de Vídeo
 - **Status:** pending
