@@ -13,6 +13,7 @@ const MANAGED_TABLES = [
   'refresh_tokens',
   'verification_tokens',
 ];
+const MANAGED_TYPES = ['verification_tokens_type_enum'];
 
 describe('Database migrations (integration)', () => {
   let dataSource: DataSource;
@@ -34,6 +35,9 @@ describe('Database migrations (integration)', () => {
     await Promise.all([
       ...MANAGED_TABLES.map((table) =>
         dataSource.query(`DROP TABLE IF EXISTS "${table}" CASCADE`),
+      ),
+      ...MANAGED_TYPES.map((type) =>
+        dataSource.query(`DROP TYPE IF EXISTS "public"."${type}" CASCADE`),
       ),
       dataSource.query(`DROP TABLE IF EXISTS "migrations" CASCADE`),
     ]);

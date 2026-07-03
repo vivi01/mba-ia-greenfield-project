@@ -6,6 +6,11 @@ const requiredEnv = {
   DB_NAME: 'db',
   JWT_SECRET: 'secret',
   JWT_REFRESH_SECRET: 'refresh-secret',
+  // Storage + queue vars became required in phase 03 (SI-03.1).
+  STORAGE_BUCKET: 'streamtube',
+  STORAGE_ACCESS_KEY: 'access-key',
+  STORAGE_SECRET_KEY: 'secret-key',
+  REDIS_HOST: 'redis',
 };
 
 const validate = (env: Record<string, string>) =>

@@ -44,11 +44,13 @@ describe('Auth (e2e)', () => {
     refreshTokenRepository = dataSource.getRepository(RefreshToken);
     throttlerStorage =
       moduleFixture.get<ThrottlerStorageService>(ThrottlerStorage);
-  });
+    // Cold ts-jest compile of AppModule under the slow Windows bind mount
+    // exceeds Jest's 5s default hook timeout.
+  }, 60_000);
 
   afterAll(async () => {
     await app.close();
-  });
+  }, 60_000);
 
   beforeEach(async () => {
     await cleanAllTables(dataSource);
@@ -685,11 +687,13 @@ describe('Rate Limiting (e2e)', () => {
     dataSource = moduleFixture.get(DataSource);
     throttlerStorage =
       moduleFixture.get<ThrottlerStorageService>(ThrottlerStorage);
-  });
+    // Cold ts-jest compile of AppModule under the slow Windows bind mount
+    // exceeds Jest's 5s default hook timeout.
+  }, 60_000);
 
   afterAll(async () => {
     await app.close();
-  });
+  }, 60_000);
 
   beforeEach(async () => {
     await cleanAllTables(dataSource);

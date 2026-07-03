@@ -14,11 +14,13 @@ describe('AppController (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     await app.init();
-  });
+    // Cold ts-jest compile of AppModule under the slow Windows bind mount
+    // exceeds Jest's 5s default hook timeout.
+  }, 60_000);
 
   afterAll(async () => {
     await app.close();
-  });
+  }, 60_000);
 
   it('/ (GET)', () => {
     return request(app.getHttpServer())

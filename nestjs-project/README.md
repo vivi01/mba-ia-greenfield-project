@@ -1,98 +1,157 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# StreamTube — Backend (API NestJS)
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+API da plataforma de compartilhamento de vídeos **StreamTube**, construída com
+**NestJS 11 + TypeScript + TypeORM + PostgreSQL 17**. Responsável por
+autenticação, canais, upload/processamento/entrega de vídeos, envio de e-mails
+transacionais e publicação de jobs na fila de processamento.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+> Visão geral do projeto (monorepo, frontend, arquitetura C4) no
+> [README raiz](../README.md). Planejamento e decisões em [`docs/`](../docs).
 
-## Description
+## Módulos
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+| Módulo | Responsabilidade |
+|--------|------------------|
+| `auth` | Cadastro, confirmação de e-mail, login, rotação de refresh token, reset de senha (JWT + Argon2) |
+| `users` | Entidade e serviço de usuários |
+| `channels` | Canal 1:1 por usuário (criado no cadastro) — dono dos vídeos |
+| `videos` | **Fase 03** — upload, ciclo de vida, processamento e entrega de vídeos |
+| `storage` | Adaptador de object storage S3/MinIO (multipart + URLs pré-assinadas) |
+| `mail` | E-mails transacionais (templates Handlebars) via SMTP/Mailpit |
+| `common` | Filtros, pipes e exceptions de domínio compartilhados |
+| `config` | Configs namespaced validadas com Joi |
+| `database` | `data-source`, migrations e seeds |
+| `swagger` | Documento OpenAPI exposto em `/api/docs` |
 
-## Project setup
+## Pré-requisitos
 
-```bash
-$ npm install
-```
+- Docker e Docker Compose
 
-## Compile and run the project
+Todos os comandos `npm`/`npx`/`tsc`/testes rodam **dentro do container**, nunca no
+host (evita divergência de variáveis de ambiente e versão do Node).
 
-```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
-```
-
-## Run tests
+## Como rodar
 
 ```bash
-# unit tests
-$ npm run test
+cd nestjs-project
 
-# e2e tests
-$ npm run test:e2e
+# Sobe a infraestrutura: API (idle), PostgreSQL, Mailpit, MinIO (+bootstrap do
+# bucket), Redis e o worker de vídeo.
+docker compose up -d
 
-# test coverage
-$ npm run test:cov
+# Instala dependências (apenas na primeira vez)
+docker compose exec nestjs-api npm install
+
+# Cria o schema do banco (obrigatório — synchronize está desabilitado)
+docker compose exec nestjs-api npm run migration:run
+
+# Sobe o servidor da API em watch mode.
+# (o compose deixa a API ociosa por padrão; o servidor não sobe sozinho)
+docker compose exec -d nestjs-api npm run start:dev
 ```
 
-## Deployment
+O `video-worker` já sobe processando a fila (`command: npm run start:worker:dev`);
+não é preciso iniciá-lo manualmente.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+### Serviços
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+| Serviço | URL / Porta | Observação |
+|---------|-------------|------------|
+| API NestJS | http://localhost:3000 | servidor sobe via `start:dev` |
+| Video Worker | — | consome a fila `video-processing` |
+| PostgreSQL | `localhost:5432` | db/user/senha: `streamtube` |
+| Redis | `localhost:6379` | backend da fila BullMQ |
+| MinIO | http://localhost:9000 (API) · http://localhost:9001 (console) | object storage S3 |
+| Mailpit | http://localhost:8025 | UI de captura de e-mails |
+| Swagger | http://localhost:3000/api/docs | habilite com `SWAGGER_ENABLED=true` |
+
+### Variáveis de ambiente (`.env`)
+
+Lidas pelo Docker Compose **e** pela aplicação (via `@nestjs/config`). Sempre use
+o **nome do serviço** do Compose como host, nunca `localhost`.
+
+- **App:** `NODE_ENV`, `PORT`
+- **Banco:** `DB_HOST=db`, `DB_PORT`, `DB_USERNAME`, `DB_PASSWORD`, `DB_NAME`
+- **Auth:** `JWT_SECRET`, `JWT_REFRESH_SECRET`, `JWT_ACCESS_EXPIRATION`, `JWT_REFRESH_EXPIRATION`, `CONFIRMATION_TOKEN_EXPIRATION_HOURS`, `PASSWORD_RESET_TOKEN_EXPIRATION_HOURS`
+- **E-mail:** `MAIL_HOST=mailpit`, `MAIL_PORT`, `MAIL_FROM`
+- **Storage (Fase 03):** `STORAGE_ENDPOINT=http://minio:9000`, `STORAGE_REGION`, `STORAGE_BUCKET`, `STORAGE_ACCESS_KEY`, `STORAGE_SECRET_KEY`, `STORAGE_FORCE_PATH_STYLE`, `UPLOAD_MAX_BYTES` (padrão `10737418240` = 10 GiB), `UPLOAD_PART_SIZE` (padrão `104857600` = 100 MiB)
+- **Fila (Fase 03):** `REDIS_HOST=redis`, `REDIS_PORT`
+
+## Pipeline de Vídeo (Fase 03)
+
+O `VideosModule` cobre todo o ciclo **upload → processamento → entrega**. A tabela
+`videos` tem FK para `channels`, um `public_id` único (nanoid, 21 chars) usado nas
+URLs públicas e um `status` que dirige o ciclo de vida:
+`draft → processing → ready | error`.
+
+**Upload sem bloquear a API (até 10 GB):** o cliente recebe URLs **pré-assinadas**
+e envia as partes **direto ao MinIO** (multipart). A API só registra o rascunho,
+gera as URLs e, no final, monta as partes — os bytes nunca passam por ela.
+
+**Processamento:** ao concluir o upload, um job `process-video` é publicado na fila
+BullMQ `video-processing` (Redis). O `VideoProcessingWorker` (um `WorkerHost`)
+baixa o arquivo, roda **ffprobe** (duração/metadados) e **ffmpeg** (thumbnail),
+sobe a thumbnail e move o vídeo para `ready` (ou `error` após a última tentativa).
+O provider do worker só é registrado quando `VIDEO_WORKER=true`, então a API nunca
+executa FFmpeg — isso roda no container `video-worker`.
+
+### Endpoints
+
+**Vídeos** (`videos.controller.ts`):
+
+| Método & Rota | Auth | Status | Descrição |
+|---------------|------|--------|-----------|
+| `POST /videos` | JWT | 201 | Registra o rascunho e retorna URLs pré-assinadas das partes |
+| `POST /videos/:id/complete` | JWT | 202 | Confirma o upload e enfileira o processamento |
+| `GET /videos/:publicId` | público | 200 | Metadados públicos (título, status, duração, thumbnail) |
+| `GET /videos/:publicId/stream` | público | 302 | Redireciona para URL pré-assinada (streaming inline, Range) |
+| `GET /videos/:publicId/download` | público | 302 | Redireciona para URL pré-assinada (`attachment`) |
+
+**Autenticação** (`auth.controller.ts`): `POST /auth/register`,
+`GET /auth/confirm-email?token=`, `POST /auth/resend-confirmation`,
+`POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`,
+`POST /auth/forgot-password`, `POST /auth/reset-password`, `GET /auth/me`.
+
+### Smoke test de upload (pior caso: 10 GB)
+
+Valida o fluxo real ponta a ponta (auth → upload multipart no MinIO →
+processamento → entrega) gerando um vídeo válido do tamanho alvo com ffmpeg.
+Roda dentro do `video-worker` (tem ffmpeg, node e rede para API/MinIO):
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+# Passada rápida (~200 MB)
+docker compose exec -e SMOKE_SIZE_BYTES=209715200 video-worker node scripts/smoke-upload.mjs
+
+# Pior caso completo (10 GiB, padrão)
+docker compose exec video-worker node scripts/smoke-upload.mjs
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## Migrations
 
-## Resources
+O `synchronize` do TypeORM é **desabilitado** — o schema evolui por migrations:
 
-Check out a few resources that may come in handy when working with NestJS:
+```bash
+docker compose exec nestjs-api npm run migration:run       # aplica
+docker compose exec nestjs-api npm run migration:generate   # gera a partir das entidades
+docker compose exec nestjs-api npm run migration:revert      # reverte a última
+```
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+Migrations atuais: `CreateUsersAndChannels`, `CreateAuthTokens`, `CreateVideos`.
 
-## Support
+## Testes
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+```bash
+docker compose exec nestjs-api npm test                 # unitários + integração
+docker compose exec nestjs-api npm run test:e2e         # end-to-end (HTTP via supertest)
+docker compose exec nestjs-api npm run test:cov         # cobertura
+```
 
-## Stay in touch
+Sufixos: `*.spec.ts` (unitário, tudo mockado), `*.integration-spec.ts` (banco real)
+e `*.e2e-spec.ts` (ciclo HTTP completo). Integração/e2e rodam com `--runInBand`.
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+## Definition of Done
 
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Uma mudança só está pronta quando: suíte relevante + suíte completa **verdes**,
+`npx tsc --noEmit` sai com código 0 e `npm run lint` passa.
+Detalhes em [`CLAUDE.md`](./CLAUDE.md) (fluxo de dev) e no
+[`CLAUDE.md` raiz](../CLAUDE.md) (princípios do projeto).

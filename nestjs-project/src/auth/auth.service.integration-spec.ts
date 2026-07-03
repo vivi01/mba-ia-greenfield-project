@@ -32,6 +32,8 @@ import {
   VerificationTokenType,
 } from './entities/verification-token.entity';
 
+jest.setTimeout(30000);
+
 const ALL_ENTITIES = [User, Channel, RefreshToken, VerificationToken];
 
 async function createAuthTestModule(): Promise<TestingModule> {
@@ -231,7 +233,7 @@ describe('AuthService — confirm (integration)', () => {
 
   it('throws TokenExpiredException for an expired token', async () => {
     const capturePromise = captureConfirmationToken(authService);
-    const { id: userId } = await authService.register({
+    await authService.register({
       email: 'expired@example.com',
       password: 'password123',
     });

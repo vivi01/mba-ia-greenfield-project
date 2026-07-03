@@ -9,7 +9,7 @@ const MAX_RETRIES = 5;
 
 function isPgUniqueViolationOnColumn(err: unknown, column: string): boolean {
   if (!(err instanceof QueryFailedError)) return false;
-  const e = err as any;
+  const e = err as { code?: string; detail?: string };
   return (
     e.code === PG_UNIQUE_VIOLATION &&
     typeof e.detail === 'string' &&
@@ -20,6 +20,17 @@ function isPgUniqueViolationOnColumn(err: unknown, column: string): boolean {
 @Injectable()
 export class ChannelsService {
   constructor(private readonly dataSource: DataSource) {}
+
+  async findByOwner(userId: string): Promise<Channel> {
+    const channel = await this.dataSource
+      .getRepository(Channel)
+      .findOneBy({ user_id: userId });
+    if (!channel) {
+      // Invariant: every user owns exactly one channel (auto-created at signup).
+      throw new Error(`No channel found for user "${userId}"`);
+    }
+    return channel;
+  }
 
   async createChannel(userId: string, email: string): Promise<Channel> {
     const baseNickname = sanitizeNickname(email.split('@')[0]);
