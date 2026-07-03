@@ -15,7 +15,9 @@ import { VideosModule } from './videos.module';
 const ALL_ENTITIES = [User, Channel, RefreshToken, VerificationToken, Video];
 
 describe('VideosModule', () => {
-  it('should compile with its providers wired (service + processor + queue)', async () => {
+  // VIDEO_WORKER is unset in tests, so the processor is not registered here
+  // (it runs only in the worker container); this asserts the API-side wiring.
+  it('should compile with its providers wired (service + queue)', async () => {
     const { host, port } = queueConfig();
     const module = await Test.createTestingModule({
       imports: [

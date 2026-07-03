@@ -13,6 +13,13 @@ import {
 import { VideosController } from './videos.controller';
 import { VideosService } from './videos.service';
 
+// The BullMQ processor runs ONLY in the dedicated worker container (per
+// `phase-03-videos/TD-06`); the entrypoint sets VIDEO_WORKER=true. The API and
+// the test AppModule leave it unset, so they enqueue jobs but never consume
+// them — keeping FFmpeg processing (and its Redis worker connection) out of the
+// request path and out of the test process.
+const isVideoWorker = process.env.VIDEO_WORKER === 'true';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([Video]),
@@ -27,7 +34,7 @@ import { VideosService } from './videos.service';
     }),
   ],
   controllers: [VideosController],
-  providers: [VideosService, VideoProcessingWorker],
+  providers: [VideosService, ...(isVideoWorker ? [VideoProcessingWorker] : [])],
   exports: [TypeOrmModule],
 })
 export class VideosModule {}
