@@ -45,12 +45,13 @@ describe('Swagger endpoints (e2e)', () => {
     beforeAll(async () => {
       process.env.SWAGGER_ENABLED = 'true';
       app = await createApp(true);
-    });
+      // Cold ts-jest AppModule compile exceeds Jest's 5s default hook timeout.
+    }, 60_000);
 
     afterAll(async () => {
       await app.close();
       delete process.env.SWAGGER_ENABLED;
-    });
+    }, 60_000);
 
     it('GET /api/docs returns 200 with HTML containing the custom title', async () => {
       const res = await request(app.getHttpServer())
@@ -93,11 +94,12 @@ describe('Swagger endpoints (e2e)', () => {
     beforeAll(async () => {
       delete process.env.SWAGGER_ENABLED;
       app = await createApp(false);
-    });
+      // Cold ts-jest AppModule compile exceeds Jest's 5s default hook timeout.
+    }, 60_000);
 
     afterAll(async () => {
       await app.close();
-    });
+    }, 60_000);
 
     it('GET /api/docs returns 404', async () => {
       await request(app.getHttpServer()).get('/api/docs').expect(404);

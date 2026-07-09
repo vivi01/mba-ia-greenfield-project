@@ -33,7 +33,12 @@ docker compose exec nestjs-api npm run start:dev
 
 Services:
 - `nestjs-api` — NestJS API, port `3000`
+- `video-worker` — same image as `nestjs-api`, started with `VIDEO_WORKER=true` (`npm run start:worker:dev`); consumes the `video-processing` queue and runs FFmpeg
 - `db` — PostgreSQL 17, port `5432`, database `streamtube`, user/password `streamtube`
+- `redis` — Redis 7, port `6379`, backing store for the BullMQ `video-processing` queue
+- `minio` — S3-compatible object storage (API `9000`, console `9001`) for video files and thumbnails
+- `minio-init` — one-shot job that creates the storage bucket on startup, then exits
+- `mailpit` — SMTP capture (UI `8025`) for account-confirmation / password-recovery emails
 
 All verification and teardown commands run on the **host machine**:
 
@@ -148,6 +153,24 @@ NestJS with standard module structure. Source lives in `src/`, compiled output i
 
 - Each domain feature gets its own module (e.g., `UsersModule`, `VideosModule`) registered in `AppModule`
 - Controllers handle HTTP routing; Services hold business logic; both are scoped to their module
+
+## Videos Pipeline
+
+`VideosModule` (`src/videos/`) owns the full upload → process → deliver lifecycle. The `videos` table has a FK to `channels` (`channel_id`), a unique `public_id` (nanoid, 21 chars) used in public URLs, and a `status` enum driving the lifecycle: `draft` → `processing` → `ready` | `error`.
+
+**Endpoints** (`videos.controller.ts`):
+
+| Method & path                    | Auth      | Status | Purpose                                                              |
+|----------------------------------|-----------|--------|----------------------------------------------------------------------|
+| `POST /videos`                   | JWT       | 201    | Pre-register a draft and return a presigned URL for direct upload    |
+| `POST /videos/:id/complete`      | JWT       | 202    | Confirm the upload finished; enqueue the `process-video` job         |
+| `GET /videos/:publicId`          | `@Public` | 200    | Public metadata view (title, status, duration, thumbnail URL)        |
+| `GET /videos/:publicId/stream`   | `@Public` | 302    | Redirect to a presigned GET URL for inline streaming (Range support) |
+| `GET /videos/:publicId/download` | `@Public` | 302    | Redirect to a presigned GET URL with `attachment` disposition        |
+
+**Storage** — `StorageService` (`src/storage/`) wraps the AWS SDK v3 S3 client pointed at MinIO: multipart uploads for large files (up to 10GB without blocking the API), presigned GET/PUT URLs, `downloadToFile` (streams an object to a temp file), and `putObject` (thumbnail upload). Bucket/key layout and the client come from `storage.config.ts`.
+
+**Queue & worker** — Upload completion publishes a `process-video` job to the BullMQ `video-processing` queue (`src/videos/videos.constants.ts`; Redis-backed, `attempts: 3`, exponential backoff). `VideoProcessingWorker` (`src/videos/processing/video.processor.ts`) is a `WorkerHost` that downloads the source, runs FFmpeg/ffprobe (`ffmpeg.util.ts` — spawned directly, no fluent wrapper) to extract duration/metadata and a thumbnail, uploads the thumbnail, and moves the row to `ready` (or `error` after the final failed attempt). **The worker provider is only registered when `VIDEO_WORKER=true`**, so the API process never runs FFmpeg — it runs in the dedicated `video-worker` container.
 
 ## Code Conventions
 
